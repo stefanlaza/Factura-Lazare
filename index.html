@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Factura-Lazare - Professional invoice management with style. Create, track, and export invoices with ease.">
+    <meta name="author" content="Lazare">
+    <title>Factura-Lazare - Professional Invoice Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        .glass-dark {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .glass-light {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+        }
+    </style>
+</head>
+<body class="min-h-screen transition-all duration-500">
+    <div id="app"></div>
+
+    <script>
+        // State management
+        let state = {
+            invoices: JSON.parse(localStorage.getItem('invoices') || '[]'),
+            theme: localStorage.getItem('theme') || 'dark',
+            showForm: false,
+            viewInvoice: null,
+            formData: {
+                clientName: '',
+                clientEmail: '',
+                clientAddress: '',
+                invoiceNumber: '',
+                date: new Date().toISOString().split('T')[0],
+                dueDate: '',
+                items: [{ description: '', hours: '', rate: '', amount: 0 }],
+                notes: ''
+            }
+        };
+
+        // Save to localStorage
+        function saveInvoices() {
+            localStorage.setItem('invoices', JSON.stringify(state.invoices));
+        }
+
+        function saveTheme() {
+            localStorage.setItem('theme', state.theme);
+        }
+
+        // Helper functions
+        function calculateTotal(items) {
+            return items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+        }
+
+        function updateLineItem(index, field, value) {
+            state.formData.items[index][field] = value;
+            
+            if (field === 'hours' || field === 'rate') {
+                const hours = parseFloat(state.formData.items[index].hours) || 0;
+                const rate = parseFloat(state.formData.items[index].rate) || 0;
+                state.formData.items[index].amount = hours * rate;
+            }
+            
+            render();
+        }
+
+        function addLineItem() {
+            state.formData.items.push({ description: '', hours: '', rate: '', amount: 0 });
+            render();
+        }
+
+        function removeLineItem(index) {
+            state.formData.items = state.formData.items.filter((_, i) => i !== index);
+            render();
+        }
+
+        function handleSubmit() {
+            if (!state.formData.clientName || !state.formData.clientEmail || 
+                !state.formData.invoiceNumber || !state.formData.dueDate) {
+                alert('Please fill in all required fields');
+                return;
+            }
+            
+            const newInvoice = {
+                ...JSON.parse(JSON.stringify(state.formData)),
+                id: Date.now(),
+                total: calculateTotal(state.formData.items),
+                status: 'unpaid'
+            };
+            
+            state.invoices.push(newInvoice);
+            saveInvoices();
+            
+            state.formData = {
+                clientName: '',
+                clientEmail: '',
+                clientAddress: '',
+                invoiceNumber: '',
+                date: new Date().toISOString().split('T')[0],
+                dueDate: '',
+                items: [{ description: '', hours: '', rate: '', amount: 0 }],
+                notes: ''
+            };
+            state.showForm = false;
+            render();
+        }
+
+        function toggleStatus(id) {
+            state.invoices = state.invoices.map(inv => 
+                inv.id === id ? { ...inv, status: inv.status === 'paid' ? 'unpaid' : 'paid' } : inv
+            );
+            saveInvoices();
+            render();
+        }
+
+        function toggleTheme() {
+            state.theme = state.theme === 'dark' ? 'light' : 'dark';
+            saveTheme();
+            render();
+        }
+
+        function exportToCSV() {
+            let csvContent = 'Invoice Number,Date,Client Name,Client Email,Description,Hours,Rate,Amount,Total,Status\n';
+            
+            state.invoices.forEach(invoice => {
+                invoice.items.forEach(item => {
+                    csvContent += `"${invoice.invoiceNumber}","${invoice.date}","${invoice.clientName}","${invoice.clientEmail}","${item.description}",${item.hours},${item.rate},${item.amount},${invoice.total},"${invoice.status}"\n`;
+                });
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `invoices_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+        }
+
+        function generatePDF(invoice) {
+            const printWindow = window.open('', '_blank');
+            const html = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Invoice ${invoice.invoiceNumber} - Factura-Lazare</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 40px; }
+                        .header { text-align: center; margin-bottom: 30px; }
+                        .header h1 { margin: 0; color: #6366f1; }
+                        .details { display: flex; justify-content: space-between; margin-bottom: 30px; }
+                        .client-info, .invoice-info { flex: 1; }
+                        .invoice-info { text-align: right; }
+                        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+                        th { background-color: #f3f4f6; font-weight: bold; }
+                        .total-row { font-weight: bold; font-size: 18px; }
+                        .notes { margin-top: 30px; padding: 15px; background-color: #f9fafb; border-radius: 5px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>INVOICE</h1>
+                    </div>
+                    <div class="details">
+                        <div class="client-info">
+                            <h3>Bill To:</h3>
+                            <p><strong>${invoice.clientName}</strong></p>
+                            <p>${invoice.clientEmail}</p>
+                            <p>${invoice.clientAddress}</p>
+                        </div>
+                        <div class="invoice-info">
+                            <p><strong>Invoice #:</strong> ${invoice.invoiceNumber}</p>
+                            <p><strong>Date:</strong> ${invoice.date}</p>
+                            <p><strong>Due Date:</strong> ${invoice.dueDate}</p>
+                        </div>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Description</th>
+                                <th>Hours</th>
+                                <th>Rate</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${invoice.items.map(item => `
+                                <tr>
+                                    <td>${item.description}</td>
+                                    <td>${item.hours}</td>
+                                    <td>$${parseFloat(item.rate).toFixed(2)}</td>
+                                    <td>$${item.amount.toFixed(2)}</td>
+                                </tr>
+                            `).join('')}
+                            <tr class="total-row">
+                                <td colspan="3" style="text-align: right;">TOTAL:</td>
+                                <td>$${invoice.total.toFixed(2)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    ${invoice.notes ? `<div class="notes"><strong>Notes:</strong><br>${invoice.notes}</div>` : ''}
+                </body>
+                </html>
+            `;
+            
+            printWindow.document.write(html);
+            printWindow.document.close();
+            printWindow.onload = () => {
+                printWindow.print();
+            };
+        }
+
+        // Icons as SVG
+        const icons = {
+            sun: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
+            moon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+            download: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+            plus: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+            trash: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+            eye: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
+            file: '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+        };
+
+        // Render function
+        function render() {
+            const isDark = state.theme === 'dark';
+            const bgClass = isDark 
+                ? 'bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900' 
+                : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50';
+            
+            const cardClass = isDark ? 'glass-dark' : 'glass-light';
+            const textClass = isDark ? 'text-white' : 'text-gray-900';
+            const subTextClass = isDark ? 'text-gray-300' : 'text-gray-600';
+            const inputClass = isDark
+                ? 'bg-white bg-opacity-5 border-white border-opacity-20 text-white placeholder-gray-400'
+                : 'bg-white bg-opacity-50 border-gray-300 text-gray-900 placeholder-gray-500';
+
+            document.body.className = `min-h-screen transition-all duration-500 ${bgClass}`;
+
+            const html = `
+                <div class="p-4 md:p-8">
+                    <div class="max-w-7xl mx-auto">
+                        <div class="${cardClass} rounded-3xl shadow-2xl p-6 md:p-8 transition-all duration-500">
+                            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                                <div>
+                                    <h1 class="text-4xl font-bold ${textClass} mb-2 bg-gradient-to-r ${isDark ? 'from-blue-400 to-purple-400' : 'from-blue-600 to-purple-600'} bg-clip-text text-transparent">
+                                        Factura-Lazare
+                                    </h1>
+                                    <p class="${subTextClass}">Professional Invoice Management</p>
+                                </div>
+                                <div class="flex gap-3 flex-wrap">
+                                    <button onclick="toggleTheme()" class="flex items-center gap-2 ${isDark ? 'bg-white bg-opacity-10 hover:bg-opacity-20' : 'bg-gray-200 hover:bg-gray-300'} ${textClass} px-4 py-2 rounded-xl transition-all duration-300 backdrop-blur-sm border ${isDark ? 'border-white border-opacity-20' : 'border-gray-300'}">
+                                        ${isDark ? icons.sun : icons.moon}
+                                    </button>
+                                    ${state.invoices.length > 0 ? `
+                                        <button onclick="exportToCSV()" class="flex items-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300">
+                                            ${icons.download}
+                                            <span class="hidden sm:inline">Export CSV</span>
+                                        </button>
+                                    ` : ''}
+                                    <button onclick="state.showForm = !state.showForm; render();" class="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-2 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300">
+                                        ${icons.plus}
+                                        <span class="hidden sm:inline">New Invoice</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            ${state.showForm ? `
+                                <div class="mb-8 ${isDark ? 'bg-white bg-opacity-5' : 'bg-white bg-opacity-50'} backdrop-blur-sm p-6 rounded-2xl border ${isDark ? 'border-white border-opacity-10' : 'border-gray-200'} transition-all duration-300 animate-fade-in">
+                                    <h2 class="text-2xl font-bold ${textClass} mb-6">Create New Invoice</h2>
+                                    
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                            <label class="block text-sm font-medium mb-2 ${subTextClass}">Client Name *</label>
+                                            <input type="text" value="${state.formData.clientName}" oninput="state.formData.clientName = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300" placeholder="John Doe">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium mb-2 ${subTextClass}">Client Email *</label>
+                                            <input type="email" value="${state.formData.clientEmail}" oninput="state.formData.clientEmail = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300" placeholder="john@example.com">
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium mb-2 ${subTextClass}">Client Address</label>
+                                        <input type="text" value="${state.formData.clientAddress}" oninput="state.formData.clientAddress = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300" placeholder="123 Main St, City, State">
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                        <div>
+                                            <label class="block text-sm font-medium mb-2 ${subTextClass}">Invoice Number *</label>
+                                            <input type="text" value="${state.formData.invoiceNumber}" oninput="state.formData.invoiceNumber = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300" placeholder="INV-001">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium mb-2 ${subTextClass}">Date *</label>
+                                            <input type="date" value="${state.formData.date}" oninput="state.formData.date = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium mb-2 ${subTextClass}">Due Date *</label>
+                                            <input type="date" value="${state.formData.dueDate}" oninput="state.formData.dueDate = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium mb-3 ${subTextClass}">Line Items</label>
+                                        ${state.formData.items.map((item, index) => `
+                                            <div class="grid grid-cols-12 gap-2 mb-3">
+                                                <input type="text" placeholder="Description" value="${item.description}" oninput="updateLineItem(${index}, 'description', this.value)" class="col-span-12 md:col-span-5 border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
+                                                <input type="number" placeholder="Hours" step="0.25" value="${item.hours}" oninput="updateLineItem(${index}, 'hours', this.value)" class="col-span-4 md:col-span-2 border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
+                                                <input type="number" placeholder="Rate" step="0.01" value="${item.rate}" oninput="updateLineItem(${index}, 'rate', this.value)" class="col-span-4 md:col-span-2 border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
+                                                <div class="col-span-3 md:col-span-2 border ${isDark ? 'bg-white bg-opacity-10 border-white border-opacity-20' : 'bg-gray-100 border-gray-300'} rounded-xl px-4 py-3 ${textClass} font-semibold flex items-center justify-center">
+                                                    $${item.amount.toFixed(2)}
+                                                </div>
+                                                <button type="button" onclick="removeLineItem(${index})" class="col-span-1 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 flex items-center justify-center">
+                                                    ${icons.trash}
+                                                </button>
+                                            </div>
+                                        `).join('')}
+                                        <button type="button" onclick="addLineItem()" class="${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'} text-sm font-medium transition-colors duration-300">
+                                            + Add Line Item
+                                        </button>
+                                    </div>
+
+                                    <div class="mb-6">
+                                        <label class="block text-sm font-medium mb-2 ${subTextClass}">Notes (optional)</label>
+                                        <textarea value="${state.formData.notes}" oninput="state.formData.notes = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300" rows="3" placeholder="Payment terms, additional information..."></textarea>
+                                    </div>
+
+                                    <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                                        <div class="text-2xl font-bold ${textClass} bg-gradient-to-r ${isDark ? 'from-blue-400 to-purple-400' : 'from-blue-600 to-purple-600'} bg-clip-text text-transparent">
+                                            Total: $${calculateTotal(state.formData.items).toFixed(2)}
+                                        </div>
+                                        <div class="flex gap-3">
+                                            <button type="button" onclick="state.showForm = false; render();" class="px-6 py-3 border ${isDark ? 'border-white border-opacity-20 hover:bg-white hover:bg-opacity-10' : 'border-gray-300 hover:bg-gray-100'} ${textClass} rounded-xl transition-all duration-300">
+                                                Cancel
+                                            </button>
+                                            <button type="button" onclick="handleSubmit()" class="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 font-semibold">
+                                                Create Invoice
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            <div>
+                                <h2 class="text-2xl font-bold ${textClass} mb-6">
+                                    Invoices <span class="${isDark ? 'text-purple-400' : 'text-purple-600'}">( ${state.invoices.length})</span>
+                                </h2>
+                                ${state.invoices.length === 0 ? `
+                                    <div class="text-center py-16 ${subTextClass}">
+                                        <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-gray-100 bg-opacity-50'} backdrop-blur-sm w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-4">
+                                            <div class="opacity-50">${icons.file}</div>
+                                        </div>
+                                        <p class="text-lg">No invoices yet</p>
+                                        <p class="text-sm mt-2">Create your first invoice to get started</p>
+                                    </div>
+                                ` : `
+                                    <div class="grid grid-cols-1 gap-4">
+                                        ${state.invoices.map(invoice => `
+                                            <div class="${isDark ? 'bg-white bg-opacity-5 hover:bg-opacity-10 border-white border-opacity-10' : 'bg-white bg-opacity-60 hover:bg-opacity-80 border-gray-200'} backdrop-blur-sm border rounded-2xl p-6 transition-all duration-300 hover:shadow-xl hover:scale-[1.02]">
+                                                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                                    <div class="flex-1">
+                                                        <div class="flex items-center gap-3 mb-2">
+                                                            <span class="text-xl font-bold ${textClass}">${invoice.invoiceNumber}</span>
+                                                            <button onclick="toggleStatus(${invoice.id})" class="px-3 py-1 rounded-full text-xs font-semibold transition-all duration-300 ${
+                                                                invoice.status === 'paid'
+                                                                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white'
+                                                                    : 'bg-gradient-to-r from-yellow-500 to-orange-600 text-white'
+                                                            }">
+                                                                ${invoice.status === 'paid' ? '✓ Paid' : '○ Unpaid'}
+                                                            </button>
+                                                        </div>
+                                                        <p class="${subTextClass} mb-1">${invoice.clientName}</p>
+                                                        <p class="text-sm ${subTextClass}">Due: ${invoice.dueDate}</p>
+                                                    </div>
+                                                    <div class="flex items-center gap-4">
+                                                        <div class="text-right">
+                                                            <p class="text-sm ${subTextClass} mb-1">Total Amount</p>
+                                                            <p class="text-2xl font-bold ${textClass} bg-gradient-to-r ${isDark ? 'from-blue-400 to-purple-400' : 'from-blue-600 to-purple-600'} bg-clip-text text-transparent">
+                                                                $${invoice.total.toFixed(2)}
+                                                            </p>
+                                                        </div>
+                                                        <div class="flex gap-2">
+                                                            <button onclick='generatePDF(${JSON.stringify(invoice).replace(/'/g, "&#39;")})' class="${isDark ? 'bg-white bg-opacity-10 hover:bg-opacity-20' : 'bg-gray-200 hover:bg-gray-300'} ${textClass} p-3 rounded-xl transition-all duration-300 hover:scale-110" title="Export PDF">
+                                                                ${icons.download}
+                                                            </button>
+                                                            <button onclick='state.viewInvoice = ${JSON.stringify(invoice).replace(/'/g, "&#39;")}; render();' class="${isDark ? 'bg-white bg-opacity-10 hover:bg-opacity-20' : 'bg-gray-200 hover:bg-gray-300'} ${textClass} p-3 rounded-xl transition-all duration-300 hover:scale-110" title="View Details">
+                                                                ${icons.eye}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                ${state.viewInvoice ? `
+                    <div class="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in" onclick="if(event.target === this) { state.viewInvoice = null; render(); }">
+                        <div class="${cardClass} rounded-3xl p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl" onclick="event.stopPropagation()">
+                            <div class="flex justify-between items-start mb-6">
+                                <h2 class="text-3xl font-bold ${textClass} bg-gradient-to-r ${isDark ? 'from-blue-400 to-purple-400' : 'from-blue-600 to-purple-600'} bg-clip-text text-transparent">
+                                    Invoice Details
+                                </h2>
+                                <button onclick="state.viewInvoice = null; render();" class="${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'} text-2xl transition-colors duration-300">
+                                    ✕
+                                </button>
+                            </div>
+                            <div class="space-y-6">
+                                <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-gray-100 bg-opacity-50'} backdrop-blur-sm p-5 rounded-2xl">
+                                    <h3 class="font-semibold text-lg ${textClass} mb-3">Client Information</h3>
+                                    <p class="${subTextClass}"><span class="${textClass}">Name:</span> ${state.viewInvoice.clientName}</p>
+                                    <p class="${subTextClass}"><span class="${textClass}">Email:</span> ${state.viewInvoice.clientEmail}</p>
+                                    ${state.viewInvoice.clientAddress ? `<p class="${subTextClass}"><span class="${textClass}">Address:</span> ${state.viewInvoice.clientAddress}</p>` : ''}
+                                </div>
+                                <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-gray-100 bg-opacity-50'} backdrop-blur-sm p-5 rounded-2xl">
+                                    <h3 class="font-semibold text-lg ${textClass} mb-3">Invoice Information</h3>
+                                    <p class="${subTextClass}"><span class="${textClass}">Invoice #:</span> ${state.viewInvoice.invoiceNumber}</p>
+                                    <p class="${subTextClass}"><span class="${textClass}">Date:</span> ${state.viewInvoice.date}</p>
+                                    <p class="${subTextClass}"><span class="${textClass}">Due Date:</span> ${state.viewInvoice.dueDate}</p>
+                                </div>
+                                <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-gray-100 bg-opacity-50'} backdrop-blur-sm p-5 rounded-2xl">
+                                    <h3 class="font-semibold text-lg ${textClass} mb-4">Line Items</h3>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full">
+                                            <thead>
+                                                <tr class="${isDark ? 'bg-white bg-opacity-10' : 'bg-gray-200 bg-opacity-50'} backdrop-blur-sm">
+                                                    <th class="px-4 py-3 text-left ${textClass} rounded-tl-xl">Description</th>
+                                                    <th class="px-4 py-3 text-left ${textClass}">Hours</th>
+                                                    <th class="px-4 py-3 text-left ${textClass}">Rate</th>
+                                                    <th class="px-4 py-3 text-left ${textClass} rounded-tr-xl">Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${state.viewInvoice.items.map((item, idx) => `
+                                                    <tr class="border-b ${isDark ? 'border-white border-opacity-10' : 'border-gray-200'}">
+                                                        <td class="px-4 py-3 ${subTextClass}">${item.description}</td>
+                                                        <td class="px-4 py-3 ${subTextClass}">${item.hours}</td>
+                                                        <td class="px-4 py-3 ${subTextClass}">$${parseFloat(item.rate).toFixed(2)}</td>
+                                                        <td class="px-4 py-3 ${textClass} font-semibold">$${item.amount.toFixed(2)}</td>
+                                                    </tr>
+                                                `).join('')}
+                                                <tr class="font-bold">
+                                                    <td colspan="3" class="px-4 py-4 text-right ${textClass} text-lg">Total:</td>
+                                                    <td class="px-4 py-4 text-xl ${textClass} bg-gradient-to-r ${isDark ? 'from-blue-400 to-purple-400' : 'from-blue-600 to-purple-600'} bg-clip-text text-transparent">
+                                                        $${state.viewInvoice.total.toFixed(2)}
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                ${state.viewInvoice.notes ? `
+                                    <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-gray-100 bg-opacity-50'} backdrop-blur-sm p-5 rounded-2xl">
+                                        <h3 class="font-semibold text-lg ${textClass} mb-3">Notes</h3>
+                                        <p class="${subTextClass}">${state.viewInvoice.notes}</p>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+
+            document.getElementById('app').innerHTML = html;
+        }
+
+        // Initial render
+        render();
+    </script>
+</body>
+</html>
