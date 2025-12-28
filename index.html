@@ -68,9 +68,13 @@
                 const hours = parseFloat(state.formData.items[index].hours) || 0;
                 const rate = parseFloat(state.formData.items[index].rate) || 0;
                 state.formData.items[index].amount = hours * rate;
+                
+                // Only update the amount display and total, not the whole form
+                const amountEl = document.getElementById(`amount-${index}`);
+                const totalEl = document.getElementById('form-total');
+                if (amountEl) amountEl.textContent = `${state.formData.items[index].amount.toFixed(2)}`;
+                if (totalEl) totalEl.textContent = `Total: ${calculateTotal(state.formData.items).toFixed(2)}`;
             }
-            
-            render();
         }
 
         function addLineItem() {
@@ -313,11 +317,11 @@
                                         <label class="block text-sm font-medium mb-3 ${subTextClass}">Line Items</label>
                                         ${state.formData.items.map((item, index) => `
                                             <div class="grid grid-cols-12 gap-2 mb-3">
-                                                <input type="text" placeholder="Description" value="${item.description}" oninput="updateLineItem(${index}, 'description', this.value)" class="col-span-12 md:col-span-5 border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
+                                                <input type="text" placeholder="Description" value="${item.description}" oninput="state.formData.items[${index}].description = this.value" class="col-span-12 md:col-span-5 border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
                                                 <input type="number" placeholder="Hours" step="0.25" value="${item.hours}" oninput="updateLineItem(${index}, 'hours', this.value)" class="col-span-4 md:col-span-2 border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
                                                 <input type="number" placeholder="Rate" step="0.01" value="${item.rate}" oninput="updateLineItem(${index}, 'rate', this.value)" class="col-span-4 md:col-span-2 border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
-                                                <div class="col-span-3 md:col-span-2 border ${isDark ? 'bg-white bg-opacity-10 border-white border-opacity-20' : 'bg-gray-100 border-gray-300'} rounded-xl px-4 py-3 ${textClass} font-semibold flex items-center justify-center">
-                                                    $${item.amount.toFixed(2)}
+                                                <div id="amount-${index}" class="col-span-3 md:col-span-2 border ${isDark ? 'bg-white bg-opacity-10 border-white border-opacity-20' : 'bg-gray-100 border-gray-300'} rounded-xl px-4 py-3 ${textClass} font-semibold flex items-center justify-center">
+                                                    ${item.amount.toFixed(2)}
                                                 </div>
                                                 <button type="button" onclick="removeLineItem(${index})" class="col-span-1 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 flex items-center justify-center">
                                                     ${icons.trash}
@@ -335,8 +339,8 @@
                                     </div>
 
                                     <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-                                        <div class="text-2xl font-bold ${textClass} bg-gradient-to-r ${isDark ? 'from-blue-400 to-purple-400' : 'from-blue-600 to-purple-600'} bg-clip-text text-transparent">
-                                            Total: $${calculateTotal(state.formData.items).toFixed(2)}
+                                        <div id="form-total" class="text-2xl font-bold ${textClass} bg-gradient-to-r ${isDark ? 'from-blue-400 to-purple-400' : 'from-blue-600 to-purple-600'} bg-clip-text text-transparent">
+                                            Total: ${calculateTotal(state.formData.items).toFixed(2)}
                                         </div>
                                         <div class="flex gap-3">
                                             <button type="button" onclick="state.showForm = false; render();" class="px-6 py-3 border ${isDark ? 'border-white border-opacity-20 hover:bg-white hover:bg-opacity-10' : 'border-gray-300 hover:bg-gray-100'} ${textClass} rounded-xl transition-all duration-300">
