@@ -159,7 +159,7 @@
                     <style>
                         body { font-family: Arial, sans-serif; margin: 40px; }
                         .header { text-align: center; margin-bottom: 30px; }
-                        .header h1 { margin: 0; color: #6366f1; }
+                        .header h1 { margin: 0; color: #475569; }
                         .details { display: flex; justify-content: space-between; margin-bottom: 30px; }
                         .client-info, .invoice-info { flex: 1; }
                         .invoice-info { text-align: right; }
@@ -256,7 +256,7 @@
                         <div class="${cardClass} rounded-3xl shadow-2xl p-6 md:p-8 transition-all duration-500">
                             <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                                 <div>
-                                    <h1 class="text-4xl font-bold ${textClass} mb-2 bg-gradient-to-r ${isDark ? 'from-blue-400 to-purple-400' : 'from-blue-600 to-purple-600'} bg-clip-text text-transparent">
+                                    <h1 class="text-4xl font-bold ${textClass} mb-2 bg-gradient-to-r ${isDark ? 'from-slate-300 to-slate-400' : 'from-slate-700 to-slate-900'} bg-clip-text text-transparent">
                                         Factura-Lazare
                                     </h1>
                                     <p class="${subTextClass}">Professional Invoice Management</p>
@@ -266,12 +266,12 @@
                                         ${isDark ? icons.sun : icons.moon}
                                     </button>
                                     ${state.invoices.length > 0 ? `
-                                        <button onclick="exportToCSV()" class="flex items-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300">
+                                        <button onclick="exportToCSV()" class="flex items-center gap-2 bg-gradient-to-r from-teal-600 to-teal-700 text-white px-4 py-2 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300">
                                             ${icons.download}
                                             <span class="hidden sm:inline">Export CSV</span>
                                         </button>
                                     ` : ''}
-                                    <button onclick="state.showForm = !state.showForm; render();" class="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-2 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300">
+                                    <button onclick="state.showForm = !state.showForm; render();" class="flex items-center gap-2 bg-gradient-to-r from-slate-700 to-slate-800 text-white px-4 py-2 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300">
                                         ${icons.plus}
                                         <span class="hidden sm:inline">New Invoice</span>
                                     </button>
@@ -285,31 +285,31 @@
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                         <div>
                                             <label class="block text-sm font-medium mb-2 ${subTextClass}">Client Name *</label>
-                                            <input type="text" value="${state.formData.clientName}" oninput="state.formData.clientName = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300" placeholder="John Doe">
+                                            <input type="text" value="${state.formData.clientName}" oninput="state.formData.clientName = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500 outline-none transition-all duration-300" placeholder="John Doe">
                                         </div>
                                         <div>
                                             <label class="block text-sm font-medium mb-2 ${subTextClass}">Client Email *</label>
-                                            <input type="email" value="${state.formData.clientEmail}" oninput="state.formData.clientEmail = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300" placeholder="john@example.com">
+                                            <input type="email" value="${state.formData.clientEmail}" oninput="state.formData.clientEmail = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500 outline-none transition-all duration-300" placeholder="john@example.com">
                                         </div>
                                     </div>
 
                                     <div class="mb-4">
                                         <label class="block text-sm font-medium mb-2 ${subTextClass}">Client Address</label>
-                                        <input type="text" value="${state.formData.clientAddress}" oninput="state.formData.clientAddress = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300" placeholder="123 Main St, City, State">
+                                        <input type="text" value="${state.formData.clientAddress}" oninput="state.formData.clientAddress = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500 outline-none transition-all duration-300" placeholder="123 Main St, City, State">
                                     </div>
 
                                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                                         <div>
                                             <label class="block text-sm font-medium mb-2 ${subTextClass}">Invoice Number *</label>
-                                            <input type="text" value="${state.formData.invoiceNumber}" oninput="state.formData.invoiceNumber = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300" placeholder="INV-001">
+                                            <input type="text" value="${state.formData.invoiceNumber}" oninput="state.formData.invoiceNumber = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500 outline-none transition-all duration-300" placeholder="INV-001">
                                         </div>
                                         <div>
                                             <label class="block text-sm font-medium mb-2 ${subTextClass}">Date *</label>
-                                            <input type="date" value="${state.formData.date}" oninput="state.formData.date = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
+                                            <input type="date" value="${state.formData.date}" oninput="state.formData.date = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500 outline-none transition-all duration-300">
                                         </div>
                                         <div>
                                             <label class="block text-sm font-medium mb-2 ${subTextClass}">Due Date *</label>
-                                            <input type="date" value="${state.formData.dueDate}" oninput="state.formData.dueDate = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
+                                            <input type="date" value="${state.formData.dueDate}" oninput="state.formData.dueDate = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500 outline-none transition-all duration-300">
                                         </div>
                                     </div>
 
@@ -328,14 +328,14 @@
                                                 </button>
                                             </div>
                                         `).join('')}
-                                        <button type="button" onclick="addLineItem()" class="${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'} text-sm font-medium transition-colors duration-300">
+                                        <button type="button" onclick="addLineItem()" class="${isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-600 hover:text-slate-700'} text-sm font-medium transition-colors duration-300">
                                             + Add Line Item
                                         </button>
                                     </div>
 
                                     <div class="mb-6">
                                         <label class="block text-sm font-medium mb-2 ${subTextClass}">Notes (optional)</label>
-                                        <textarea value="${state.formData.notes}" oninput="state.formData.notes = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300" rows="3" placeholder="Payment terms, additional information..."></textarea>
+                                        <textarea value="${state.formData.notes}" oninput="state.formData.notes = this.value" class="w-full border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500 outline-none transition-all duration-300" rows="3" placeholder="Payment terms, additional information..."></textarea>
                                     </div>
 
                                     <div class="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -356,7 +356,7 @@
 
                             <div>
                                 <h2 class="text-2xl font-bold ${textClass} mb-6">
-                                    Invoices <span class="${isDark ? 'text-purple-400' : 'text-purple-600'}">( ${state.invoices.length})</span>
+                                    Invoices <span class="${isDark ? 'text-slate-400' : 'text-slate-600'}">( ${state.invoices.length})</span>
                                 </h2>
                                 ${state.invoices.length === 0 ? `
                                     <div class="text-center py-16 ${subTextClass}">
@@ -376,8 +376,8 @@
                                                             <span class="text-xl font-bold ${textClass}">${invoice.invoiceNumber}</span>
                                                             <button onclick="toggleStatus(${invoice.id})" class="px-3 py-1 rounded-full text-xs font-semibold transition-all duration-300 ${
                                                                 invoice.status === 'paid'
-                                                                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white'
-                                                                    : 'bg-gradient-to-r from-yellow-500 to-orange-600 text-white'
+                                                                    ? 'bg-gradient-to-r from-teal-600 to-teal-700 text-white'
+                                                                    : 'bg-gradient-to-r from-amber-500 to-amber-600 text-white'
                                                             }">
                                                                 ${invoice.status === 'paid' ? '✓ Paid' : '○ Unpaid'}
                                                             </button>
@@ -388,8 +388,8 @@
                                                     <div class="flex items-center gap-4">
                                                         <div class="text-right">
                                                             <p class="text-sm ${subTextClass} mb-1">Total Amount</p>
-                                                            <p class="text-2xl font-bold ${textClass} bg-gradient-to-r ${isDark ? 'from-blue-400 to-purple-400' : 'from-blue-600 to-purple-600'} bg-clip-text text-transparent">
-                                                                $${invoice.total.toFixed(2)}
+                                                            <p class="text-2xl font-bold ${textClass} bg-gradient-to-r ${isDark ? 'from-slate-300 to-slate-400' : 'from-slate-700 to-slate-900'} bg-clip-text text-transparent">
+                                                                ${invoice.total.toFixed(2)}
                                                             </p>
                                                         </div>
                                                         <div class="flex gap-2">
@@ -415,7 +415,7 @@
                     <div class="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in" onclick="if(event.target === this) { state.viewInvoice = null; render(); }">
                         <div class="${cardClass} rounded-3xl p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl" onclick="event.stopPropagation()">
                             <div class="flex justify-between items-start mb-6">
-                                <h2 class="text-3xl font-bold ${textClass} bg-gradient-to-r ${isDark ? 'from-blue-400 to-purple-400' : 'from-blue-600 to-purple-600'} bg-clip-text text-transparent">
+                                <h2 class="text-3xl font-bold ${textClass} bg-gradient-to-r ${isDark ? 'from-slate-300 to-slate-400' : 'from-slate-700 to-slate-900'} bg-clip-text text-transparent">
                                     Invoice Details
                                 </h2>
                                 <button onclick="state.viewInvoice = null; render();" class="${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'} text-2xl transition-colors duration-300">
@@ -458,8 +458,8 @@
                                                 `).join('')}
                                                 <tr class="font-bold">
                                                     <td colspan="3" class="px-4 py-4 text-right ${textClass} text-lg">Total:</td>
-                                                    <td class="px-4 py-4 text-xl ${textClass} bg-gradient-to-r ${isDark ? 'from-blue-400 to-purple-400' : 'from-blue-600 to-purple-600'} bg-clip-text text-transparent">
-                                                        $${state.viewInvoice.total.toFixed(2)}
+                                                    <td class="px-4 py-4 text-xl ${textClass} bg-gradient-to-r ${isDark ? 'from-slate-300 to-slate-400' : 'from-slate-700 to-slate-900'} bg-clip-text text-transparent">
+                                                        ${state.viewInvoice.total.toFixed(2)}
                                                     </td>
                                                 </tr>
                                             </tbody>
