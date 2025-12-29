@@ -7,12 +7,18 @@
     <meta name="author" content="Lazare">
     <title>Factura-Lazare - Professional Invoice Management</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        .animate-spin { animation: spin 1s linear infinite; }
         .glass-dark {
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(20px);
@@ -23,6 +29,13 @@
             backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.4);
         }
+        .sort-icon { 
+            display: inline-block; 
+            margin-left: 4px; 
+            opacity: 0.3;
+            transition: opacity 0.2s;
+        }
+        .sort-icon.active { opacity: 1; }
     </style>
 </head>
 <body class="min-h-screen transition-all duration-500">
@@ -35,6 +48,12 @@
             theme: localStorage.getItem('theme') || 'dark',
             showForm: false,
             viewInvoice: null,
+            editingInvoice: null,
+            searchQuery: '',
+            sortField: 'date',
+            sortDirection: 'desc',
+            showDeleteConfirm: null,
+            loading: false,
             formData: {
                 clientName: '',
                 clientEmail: '',
@@ -69,11 +88,10 @@
                 const rate = parseFloat(state.formData.items[index].rate) || 0;
                 state.formData.items[index].amount = hours * rate;
                 
-                // Only update the amount display and total, not the whole form
                 const amountEl = document.getElementById(`amount-${index}`);
                 const totalEl = document.getElementById('form-total');
-                if (amountEl) amountEl.textContent = `${state.formData.items[index].amount.toFixed(2)}`;
-                if (totalEl) totalEl.textContent = `Total: ${calculateTotal(state.formData.items).toFixed(2)}`;
+                if (amountEl) amountEl.textContent = `$${state.formData.items[index].amount.toFixed(2)}`;
+                if (totalEl) totalEl.textContent = `Total: $${calculateTotal(state.formData.items).toFixed(2)}`;
             }
         }
 
@@ -94,28 +112,69 @@
                 return;
             }
             
-            const newInvoice = {
-                ...JSON.parse(JSON.stringify(state.formData)),
-                id: Date.now(),
-                total: calculateTotal(state.formData.items),
-                status: 'unpaid'
-            };
-            
-            state.invoices.push(newInvoice);
-            saveInvoices();
-            
-            state.formData = {
-                clientName: '',
-                clientEmail: '',
-                clientAddress: '',
-                invoiceNumber: '',
-                date: new Date().toISOString().split('T')[0],
-                dueDate: '',
-                items: [{ description: '', hours: '', rate: '', amount: 0 }],
-                notes: ''
-            };
-            state.showForm = false;
+            state.loading = true;
             render();
+            
+            setTimeout(() => {
+                if (state.editingInvoice) {
+                    state.invoices = state.invoices.map(inv => 
+                        inv.id === state.editingInvoice.id 
+                            ? { ...JSON.parse(JSON.stringify(state.formData)), id: state.editingInvoice.id, total: calculateTotal(state.formData.items), status: state.editingInvoice.status }
+                            : inv
+                    );
+                    state.editingInvoice = null;
+                } else {
+                    const newInvoice = {
+                        ...JSON.parse(JSON.stringify(state.formData)),
+                        id: Date.now(),
+                        total: calculateTotal(state.formData.items),
+                        status: 'unpaid'
+                    };
+                    state.invoices.push(newInvoice);
+                }
+                
+                saveInvoices();
+                
+                state.formData = {
+                    clientName: '',
+                    clientEmail: '',
+                    clientAddress: '',
+                    invoiceNumber: '',
+                    date: new Date().toISOString().split('T')[0],
+                    dueDate: '',
+                    items: [{ description: '', hours: '', rate: '', amount: 0 }],
+                    notes: ''
+                };
+                state.showForm = false;
+                state.loading = false;
+                render();
+            }, 500);
+        }
+
+        function editInvoice(invoice) {
+            state.editingInvoice = invoice;
+            state.formData = JSON.parse(JSON.stringify(invoice));
+            state.showForm = true;
+            render();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function deleteInvoice(id) {
+            state.showDeleteConfirm = id;
+            render();
+        }
+
+        function confirmDelete() {
+            state.loading = true;
+            render();
+            
+            setTimeout(() => {
+                state.invoices = state.invoices.filter(inv => inv.id !== state.showDeleteConfirm);
+                saveInvoices();
+                state.showDeleteConfirm = null;
+                state.loading = false;
+                render();
+            }, 300);
         }
 
         function toggleStatus(id) {
@@ -130,6 +189,72 @@
             state.theme = state.theme === 'dark' ? 'light' : 'dark';
             saveTheme();
             render();
+        }
+        function sortInvoices(field) {
+            if (state.sortField === field) {
+                state.sortDirection = state.sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                state.sortField = field;
+                state.sortDirection = 'desc';
+            }
+            render();
+        }
+
+        function getFilteredAndSortedInvoices() {
+            let filtered = state.invoices.filter(inv => {
+                if (!state.searchQuery) return true;
+                const query = state.searchQuery.toLowerCase();
+                return inv.invoiceNumber.toLowerCase().includes(query) ||
+                       inv.clientName.toLowerCase().includes(query) ||
+                       inv.clientEmail.toLowerCase().includes(query) ||
+                       inv.status.toLowerCase().includes(query);
+            });
+
+            return filtered.sort((a, b) => {
+                let aVal = a[state.sortField];
+                let bVal = b[state.sortField];
+                
+                if (state.sortField === 'total') {
+                    aVal = parseFloat(aVal);
+                    bVal = parseFloat(bVal);
+                }
+                
+                if (state.sortDirection === 'asc') {
+                    return aVal > bVal ? 1 : -1;
+                } else {
+                    return aVal < bVal ? 1 : -1;
+                }
+            });
+        }
+
+        function getTotalStats() {
+            const total = state.invoices.reduce((sum, inv) => sum + inv.total, 0);
+            const paid = state.invoices.filter(inv => inv.status === 'paid').reduce((sum, inv) => sum + inv.total, 0);
+            const unpaid = state.invoices.filter(inv => inv.status === 'unpaid').reduce((sum, inv) => sum + inv.total, 0);
+            return { total, paid, unpaid };
+        }
+
+        function copyInvoiceToClipboard(invoice) {
+            const text = `INVOICE: ${invoice.invoiceNumber}
+Date: ${invoice.date}
+Due Date: ${invoice.dueDate}
+Status: ${invoice.status.toUpperCase()}
+
+CLIENT:
+${invoice.clientName}
+${invoice.clientEmail}
+${invoice.clientAddress}
+
+LINE ITEMS:
+${invoice.items.map(item => `${item.description} - ${item.hours}h @ $${item.rate}/h = $${item.amount.toFixed(2)}`).join('\n')}
+
+TOTAL: $${invoice.total.toFixed(2)}
+
+${invoice.notes ? 'NOTES:\n' + invoice.notes : ''}`.trim();
+            
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Invoice details copied to clipboard!');
+            });
         }
 
         function exportToCSV() {
@@ -151,70 +276,80 @@
 
         function generatePDF(invoice) {
             const printWindow = window.open('', '_blank');
-            const html = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Invoice ${invoice.invoiceNumber} - Factura-Lazare</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; margin: 40px; }
-                        .header { text-align: center; margin-bottom: 30px; }
-                        .header h1 { margin: 0; color: #475569; }
-                        .details { display: flex; justify-content: space-between; margin-bottom: 30px; }
-                        .client-info, .invoice-info { flex: 1; }
-                        .invoice-info { text-align: right; }
-                        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-                        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-                        th { background-color: #f3f4f6; font-weight: bold; }
-                        .total-row { font-weight: bold; font-size: 18px; }
-                        .notes { margin-top: 30px; padding: 15px; background-color: #f9fafb; border-radius: 5px; }
-                    </style>
-                </head>
-                <body>
-                    <div class="header">
-                        <h1>INVOICE</h1>
-                    </div>
-                    <div class="details">
-                        <div class="client-info">
-                            <h3>Bill To:</h3>
-                            <p><strong>${invoice.clientName}</strong></p>
-                            <p>${invoice.clientEmail}</p>
-                            <p>${invoice.clientAddress}</p>
-                        </div>
-                        <div class="invoice-info">
-                            <p><strong>Invoice #:</strong> ${invoice.invoiceNumber}</p>
-                            <p><strong>Date:</strong> ${invoice.date}</p>
-                            <p><strong>Due Date:</strong> ${invoice.dueDate}</p>
-                        </div>
-                    </div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Description</th>
-                                <th>Hours</th>
-                                <th>Rate</th>
-                                <th>Amount</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${invoice.items.map(item => `
-                                <tr>
-                                    <td>${item.description}</td>
-                                    <td>${item.hours}</td>
-                                    <td>$${parseFloat(item.rate).toFixed(2)}</td>
-                                    <td>$${item.amount.toFixed(2)}</td>
-                                </tr>
-                            `).join('')}
-                            <tr class="total-row">
-                                <td colspan="3" style="text-align: right;">TOTAL:</td>
-                                <td>$${invoice.total.toFixed(2)}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    ${invoice.notes ? `<div class="notes"><strong>Notes:</strong><br>${invoice.notes}</div>` : ''}
-                </body>
-                </html>
-            `;
+            const html = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Invoice ${invoice.invoiceNumber} - Factura-Lazare</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; color: #1e293b; }
+        .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #475569; padding-bottom: 20px; }
+        .header h1 { margin: 0; color: #475569; font-size: 32px; }
+        .header p { color: #64748b; margin: 5px 0; }
+        .details { display: flex; justify-content: space-between; margin-bottom: 30px; }
+        .client-info, .invoice-info { flex: 1; }
+        .invoice-info { text-align: right; }
+        .section-title { color: #475569; font-size: 14px; font-weight: bold; text-transform: uppercase; margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background-color: #f1f5f9; font-weight: bold; color: #475569; }
+        .total-row { font-weight: bold; font-size: 18px; background-color: #f8fafc; }
+        .notes { margin-top: 30px; padding: 15px; background-color: #f8fafc; border-left: 3px solid #475569; }
+        .footer { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 12px; }
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+        .status-paid { background-color: #d1fae5; color: #065f46; }
+        .status-unpaid { background-color: #fef3c7; color: #92400e; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>FACTURA-LAZARE</h1>
+        <p>Professional Invoice Management</p>
+    </div>
+    <div class="details">
+        <div class="client-info">
+            <p class="section-title">Bill To:</p>
+            <p><strong>${invoice.clientName}</strong></p>
+            <p>${invoice.clientEmail}</p>
+            <p>${invoice.clientAddress}</p>
+        </div>
+        <div class="invoice-info">
+            <p><strong>Invoice #:</strong> ${invoice.invoiceNumber}</p>
+            <p><strong>Date:</strong> ${invoice.date}</p>
+            <p><strong>Due Date:</strong> ${invoice.dueDate}</p>
+            <p><strong>Status:</strong> <span class="status-badge status-${invoice.status}">${invoice.status.toUpperCase()}</span></p>
+        </div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th style="width: 100px;">Hours</th>
+                <th style="width: 120px;">Rate</th>
+                <th style="width: 120px;">Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${invoice.items.map(item => `
+                <tr>
+                    <td>${item.description}</td>
+                    <td>${item.hours}</td>
+                    <td>$${parseFloat(item.rate).toFixed(2)}</td>
+                    <td>$${item.amount.toFixed(2)}</td>
+                </tr>
+            `).join('')}
+            <tr class="total-row">
+                <td colspan="3" style="text-align: right;">TOTAL:</td>
+                <td>$${invoice.total.toFixed(2)}</td>
+            </tr>
+        </tbody>
+    </table>
+    ${invoice.notes ? `<div class="notes"><strong>Notes:</strong><br>${invoice.notes}</div>` : ''}
+    <div class="footer">
+        <p>Thank you for your business!</p>
+        <p>Generated by Factura-Lazare on ${new Date().toLocaleDateString()}</p>
+    </div>
+</body>
+</html>`;
             
             printWindow.document.write(html);
             printWindow.document.close();
@@ -223,23 +358,41 @@
             };
         }
 
-        // Icons as SVG
+        // Icons as Lucide elements
         const icons = {
-            sun: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
-            moon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
-            download: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
-            plus: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
-            trash: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
-            eye: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
-            file: '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+            sun: '<i data-lucide="sun"></i>',
+            moon: '<i data-lucide="moon"></i>',
+            download: '<i data-lucide="download"></i>',
+            plus: '<i data-lucide="plus"></i>',
+            trash: '<i data-lucide="trash-2" class="w-4 h-4"></i>',
+            eye: '<i data-lucide="eye"></i>',
+            file: '<i data-lucide="file-text" class="w-12 h-12"></i>',
+            edit: '<i data-lucide="edit"></i>',
+            copy: '<i data-lucide="copy"></i>',
+            search: '<i data-lucide="search"></i>',
+            sort: '<i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>',
+            sortUp: '<i data-lucide="arrow-down" class="w-3.5 h-3.5"></i>',
+            sortDown: '<i data-lucide="arrow-up" class="w-3.5 h-3.5"></i>',
+            dollarSign: '<i data-lucide="dollar-sign"></i>',
+            checkCircle: '<i data-lucide="check-circle-2"></i>',
+            clock: '<i data-lucide="clock"></i>',
+            spinner: '<i data-lucide="loader-2" class="animate-spin"></i>',
+            x: '<i data-lucide="x"></i>',
+            alertCircle: '<i data-lucide="alert-circle" class="text-red-500"></i>'
         };
 
+        // Initialize Lucide icons after render
+        function initIcons() {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
         // Render function
         function render() {
             const isDark = state.theme === 'dark';
             const bgClass = isDark 
-                ? 'bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900' 
-                : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50';
+                ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-gray-900' 
+                : 'bg-gradient-to-br from-gray-100 via-slate-50 to-gray-200';
             
             const cardClass = isDark ? 'glass-dark' : 'glass-light';
             const textClass = isDark ? 'text-white' : 'text-gray-900';
@@ -249,6 +402,9 @@
                 : 'bg-white bg-opacity-50 border-gray-300 text-gray-900 placeholder-gray-500';
 
             document.body.className = `min-h-screen transition-all duration-500 ${bgClass}`;
+
+            const filteredInvoices = getFilteredAndSortedInvoices();
+            const stats = getTotalStats();
 
             const html = `
                 <div class="p-4 md:p-8">
@@ -271,16 +427,44 @@
                                             <span class="hidden sm:inline">Export CSV</span>
                                         </button>
                                     ` : ''}
-                                    <button onclick="state.showForm = !state.showForm; render();" class="flex items-center gap-2 bg-gradient-to-r from-slate-700 to-slate-800 text-white px-4 py-2 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300">
+                                    <button onclick="state.showForm = !state.showForm; state.editingInvoice = null; state.formData = { clientName: '', clientEmail: '', clientAddress: '', invoiceNumber: '', date: new Date().toISOString().split('T')[0], dueDate: '', items: [{ description: '', hours: '', rate: '', amount: 0 }], notes: '' }; render();" class="flex items-center gap-2 bg-gradient-to-r from-slate-700 to-slate-800 text-white px-4 py-2 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300">
                                         ${icons.plus}
                                         <span class="hidden sm:inline">New Invoice</span>
                                     </button>
                                 </div>
                             </div>
 
+                            ${state.invoices.length > 0 ? `
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                                    <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-white bg-opacity-50'} backdrop-blur-sm p-5 rounded-2xl border ${isDark ? 'border-white border-opacity-10' : 'border-gray-200'}">
+                                        <div class="flex items-center gap-3 mb-2">
+                                            ${icons.dollarSign}
+                                            <span class="${subTextClass} text-sm font-medium">Total Invoiced</span>
+                                        </div>
+                                        <p class="text-3xl font-bold ${textClass}">$${stats.total.toFixed(2)}</p>
+                                        <p class="text-xs ${subTextClass} mt-1">${state.invoices.length} invoice${state.invoices.length !== 1 ? 's' : ''}</p>
+                                    </div>
+                                    <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-white bg-opacity-50'} backdrop-blur-sm p-5 rounded-2xl border ${isDark ? 'border-white border-opacity-10' : 'border-gray-200'}">
+                                        <div class="flex items-center gap-3 mb-2">
+                                            ${icons.checkCircle}
+                                            <span class="${subTextClass} text-sm font-medium">Paid</span>
+                                        </div>
+                                        <p class="text-3xl font-bold text-teal-600">$${stats.paid.toFixed(2)}</p>
+                                        <p class="text-xs ${subTextClass} mt-1">${state.invoices.filter(i => i.status === 'paid').length} paid</p>
+                                    </div>
+                                    <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-white bg-opacity-50'} backdrop-blur-sm p-5 rounded-2xl border ${isDark ? 'border-white border-opacity-10' : 'border-gray-200'}">
+                                        <div class="flex items-center gap-3 mb-2">
+                                            ${icons.clock}
+                                            <span class="${subTextClass} text-sm font-medium">Unpaid</span>
+                                        </div>
+                                        <p class="text-3xl font-bold text-amber-600">$${stats.unpaid.toFixed(2)}</p>
+                                        <p class="text-xs ${subTextClass} mt-1">${state.invoices.filter(i => i.status === 'unpaid').length} unpaid</p>
+                                    </div>
+                                </div>
+                            ` : ''}
                             ${state.showForm ? `
                                 <div class="mb-8 ${isDark ? 'bg-white bg-opacity-5' : 'bg-white bg-opacity-50'} backdrop-blur-sm p-6 rounded-2xl border ${isDark ? 'border-white border-opacity-10' : 'border-gray-200'} transition-all duration-300 animate-fade-in">
-                                    <h2 class="text-2xl font-bold ${textClass} mb-6">Create New Invoice</h2>
+                                    <h2 class="text-2xl font-bold ${textClass} mb-6">${state.editingInvoice ? 'Edit Invoice' : 'Create New Invoice'}</h2>
                                     
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                         <div>
@@ -317,11 +501,11 @@
                                         <label class="block text-sm font-medium mb-3 ${subTextClass}">Line Items</label>
                                         ${state.formData.items.map((item, index) => `
                                             <div class="grid grid-cols-12 gap-2 mb-3">
-                                                <input type="text" placeholder="Description" value="${item.description}" oninput="state.formData.items[${index}].description = this.value" class="col-span-12 md:col-span-5 border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
-                                                <input type="number" placeholder="Hours" step="0.25" value="${item.hours}" oninput="updateLineItem(${index}, 'hours', this.value)" class="col-span-4 md:col-span-2 border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
-                                                <input type="number" placeholder="Rate" step="0.01" value="${item.rate}" oninput="updateLineItem(${index}, 'rate', this.value)" class="col-span-4 md:col-span-2 border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300">
+                                                <input type="text" placeholder="Description" value="${item.description}" oninput="state.formData.items[${index}].description = this.value" class="col-span-12 md:col-span-5 border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500 outline-none transition-all duration-300">
+                                                <input type="number" placeholder="Hours" step="0.25" value="${item.hours}" oninput="updateLineItem(${index}, 'hours', this.value)" class="col-span-4 md:col-span-2 border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500 outline-none transition-all duration-300">
+                                                <input type="number" placeholder="Rate" step="0.01" value="${item.rate}" oninput="updateLineItem(${index}, 'rate', this.value)" class="col-span-4 md:col-span-2 border ${inputClass} rounded-xl px-4 py-3 focus:ring-2 focus:ring-slate-500 outline-none transition-all duration-300">
                                                 <div id="amount-${index}" class="col-span-3 md:col-span-2 border ${isDark ? 'bg-white bg-opacity-10 border-white border-opacity-20' : 'bg-gray-100 border-gray-300'} rounded-xl px-4 py-3 ${textClass} font-semibold flex items-center justify-center">
-                                                    ${item.amount.toFixed(2)}
+                                                    $${item.amount.toFixed(2)}
                                                 </div>
                                                 <button type="button" onclick="removeLineItem(${index})" class="col-span-1 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 flex items-center justify-center">
                                                     ${icons.trash}
@@ -339,15 +523,16 @@
                                     </div>
 
                                     <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-                                        <div id="form-total" class="text-2xl font-bold ${textClass} bg-gradient-to-r ${isDark ? 'from-blue-400 to-purple-400' : 'from-blue-600 to-purple-600'} bg-clip-text text-transparent">
-                                            Total: ${calculateTotal(state.formData.items).toFixed(2)}
+                                        <div id="form-total" class="text-2xl font-bold ${textClass} bg-gradient-to-r ${isDark ? 'from-slate-300 to-slate-400' : 'from-slate-700 to-slate-900'} bg-clip-text text-transparent">
+                                            Total: $${calculateTotal(state.formData.items).toFixed(2)}
                                         </div>
                                         <div class="flex gap-3">
-                                            <button type="button" onclick="state.showForm = false; render();" class="px-6 py-3 border ${isDark ? 'border-white border-opacity-20 hover:bg-white hover:bg-opacity-10' : 'border-gray-300 hover:bg-gray-100'} ${textClass} rounded-xl transition-all duration-300">
+                                            <button type="button" onclick="state.showForm = false; state.editingInvoice = null; render();" class="px-6 py-3 border ${isDark ? 'border-white border-opacity-20 hover:bg-white hover:bg-opacity-10' : 'border-gray-300 hover:bg-gray-100'} ${textClass} rounded-xl transition-all duration-300">
                                                 Cancel
                                             </button>
-                                            <button type="button" onclick="handleSubmit()" class="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 font-semibold">
-                                                Create Invoice
+                                            <button type="button" onclick="handleSubmit()" class="flex items-center gap-2 bg-gradient-to-r from-slate-700 to-slate-800 text-white px-6 py-3 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 font-semibold">
+                                                ${state.loading ? icons.spinner : ''}
+                                                ${state.editingInvoice ? 'Update Invoice' : 'Create Invoice'}
                                             </button>
                                         </div>
                                     </div>
@@ -355,55 +540,167 @@
                             ` : ''}
 
                             <div>
-                                <h2 class="text-2xl font-bold ${textClass} mb-6">
-                                    Invoices <span class="${isDark ? 'text-slate-400' : 'text-slate-600'}">( ${state.invoices.length})</span>
-                                </h2>
+                                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                                    <h2 class="text-2xl font-bold ${textClass}">
+                                        Invoices <span class="${isDark ? 'text-slate-400' : 'text-slate-600'}">(${filteredInvoices.length}${state.searchQuery ? ` of ${state.invoices.length}` : ''})</span>
+                                    </h2>
+                                    ${state.invoices.length > 0 ? `
+                                        <div class="relative w-full md:w-64">
+                                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                ${icons.search}
+                                            </div>
+                                            <input 
+                                                type="text" 
+                                                placeholder="Search invoices..." 
+                                                value="${state.searchQuery}"
+                                                oninput="state.searchQuery = this.value; render();"
+                                                class="w-full border ${inputClass} rounded-xl pl-10 pr-4 py-3 focus:ring-2 focus:ring-slate-500 outline-none transition-all duration-300"
+                                            >
+                                        </div>
+                                    ` : ''}
+                                </div>
+
                                 ${state.invoices.length === 0 ? `
                                     <div class="text-center py-16 ${subTextClass}">
                                         <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-gray-100 bg-opacity-50'} backdrop-blur-sm w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-4">
                                             <div class="opacity-50">${icons.file}</div>
                                         </div>
-                                        <p class="text-lg">No invoices yet</p>
-                                        <p class="text-sm mt-2">Create your first invoice to get started</p>
+                                        <p class="text-xl font-semibold ${textClass} mb-2">No invoices yet</p>
+                                        <p class="text-sm mb-6">Create your first invoice to get started tracking your business</p>
+                                        <button onclick="state.showForm = true; render();" class="inline-flex items-center gap-2 bg-gradient-to-r from-slate-700 to-slate-800 text-white px-6 py-3 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300">
+                                            ${icons.plus}
+                                            Create Your First Invoice
+                                        </button>
                                     </div>
-                                ` : `
-                                    <div class="grid grid-cols-1 gap-4">
-                                        ${state.invoices.map(invoice => `
-                                            <div class="${isDark ? 'bg-white bg-opacity-5 hover:bg-opacity-10 border-white border-opacity-10' : 'bg-white bg-opacity-60 hover:bg-opacity-80 border-gray-200'} backdrop-blur-sm border rounded-2xl p-6 transition-all duration-300 hover:shadow-xl hover:scale-[1.02]">
-                                                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                                    <div class="flex-1">
-                                                        <div class="flex items-center gap-3 mb-2">
-                                                            <span class="text-xl font-bold ${textClass}">${invoice.invoiceNumber}</span>
-                                                            <button onclick="toggleStatus(${invoice.id})" class="px-3 py-1 rounded-full text-xs font-semibold transition-all duration-300 ${
-                                                                invoice.status === 'paid'
-                                                                    ? 'bg-gradient-to-r from-teal-600 to-teal-700 text-white'
-                                                                    : 'bg-gradient-to-r from-amber-500 to-amber-600 text-white'
-                                                            }">
+                                ` : filteredInvoices.length === 0 ? `
+                                    <div class="text-center py-16 ${subTextClass}">
+                                        <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-gray-100 bg-opacity-50'} backdrop-blur-sm w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-4">
+                                            ${icons.search}
+                                        </div>
+                                        <p class="text-xl font-semibold ${textClass} mb-2">No invoices found</p>
+                                        <p class="text-sm mb-4">Try adjusting your search query</p>
+                                        <button onclick="state.searchQuery = ''; render();" class="text-sm ${isDark ? 'text-slate-400 hover:text-slate-300' : 'text-slate-600 hover:text-slate-700'} underline">
+                                            Clear search
+                                        </button>
+                                    </div>
+                                ` : `<div class="overflow-x-auto">
+                                        <table class="w-full">
+                                            <thead>
+                                                <tr class="${isDark ? 'bg-white bg-opacity-5' : 'bg-gray-100 bg-opacity-50'} backdrop-blur-sm">
+                                                    <th onclick="sortInvoices('invoiceNumber')" class="px-4 py-3 text-left ${textClass} cursor-pointer hover:bg-opacity-10 transition-all">
+                                                        <span class="flex items-center">
+                                                            Invoice #
+                                                            <span class="sort-icon ${state.sortField === 'invoiceNumber' ? 'active' : ''}">
+                                                                ${state.sortField === 'invoiceNumber' ? (state.sortDirection === 'asc' ? icons.sortDown : icons.sortUp) : icons.sort}
+                                                            </span>
+                                                        </span>
+                                                    </th>
+                                                    <th onclick="sortInvoices('date')" class="px-4 py-3 text-left ${textClass} cursor-pointer hover:bg-opacity-10 transition-all">
+                                                        <span class="flex items-center">
+                                                            Date
+                                                            <span class="sort-icon ${state.sortField === 'date' ? 'active' : ''}">
+                                                                ${state.sortField === 'date' ? (state.sortDirection === 'asc' ? icons.sortDown : icons.sortUp) : icons.sort}
+                                                            </span>
+                                                        </span>
+                                                    </th>
+                                                    <th onclick="sortInvoices('clientName')" class="px-4 py-3 text-left ${textClass} cursor-pointer hover:bg-opacity-10 transition-all">
+                                                        <span class="flex items-center">
+                                                            Client
+                                                            <span class="sort-icon ${state.sortField === 'clientName' ? 'active' : ''}">
+                                                                ${state.sortField === 'clientName' ? (state.sortDirection === 'asc' ? icons.sortDown : icons.sortUp) : icons.sort}
+                                                            </span>
+                                                        </span>
+                                                    </th>
+                                                    <th onclick="sortInvoices('total')" class="px-4 py-3 text-left ${textClass} cursor-pointer hover:bg-opacity-10 transition-all">
+                                                        <span class="flex items-center">
+                                                            Total
+                                                            <span class="sort-icon ${state.sortField === 'total' ? 'active' : ''}">
+                                                                ${state.sortField === 'total' ? (state.sortDirection === 'asc' ? icons.sortDown : icons.sortUp) : icons.sort}
+                                                            </span>
+                                                        </span>
+                                                    </th>
+                                                    <th onclick="sortInvoices('status')" class="px-4 py-3 text-left ${textClass} cursor-pointer hover:bg-opacity-10 transition-all">
+                                                        <span class="flex items-center">
+                                                            Status
+                                                            <span class="sort-icon ${state.sortField === 'status' ? 'active' : ''}">
+                                                                ${state.sortField === 'status' ? (state.sortDirection === 'asc' ? icons.sortDown : icons.sortUp) : icons.sort}
+                                                            </span>
+                                                        </span>
+                                                    </th>
+                                                    <th class="px-4 py-3 text-left ${textClass}">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${filteredInvoices.map((invoice) => `
+                                                    <tr class="${isDark ? 'border-b border-white border-opacity-10 hover:bg-white hover:bg-opacity-5' : 'border-b border-gray-200 hover:bg-gray-50'} transition-all">
+                                                        <td class="px-4 py-4">
+                                                            <span class="font-semibold ${textClass}">${invoice.invoiceNumber}</span>
+                                                        </td>
+                                                        <td class="px-4 py-4 ${subTextClass}">${invoice.date}</td>
+                                                        <td class="px-4 py-4">
+                                                            <div>
+                                                                <p class="${textClass} font-medium">${invoice.clientName}</p>
+                                                                <p class="text-xs ${subTextClass}">${invoice.clientEmail}</p>
+                                                            </div>
+                                                        </td>
+                                                        <td class="px-4 py-4">
+                                                            <span class="font-bold ${textClass}">$${invoice.total.toFixed(2)}</span>
+                                                        </td>
+                                                        <td class="px-4 py-4">
+                                                            <button
+                                                                onclick="toggleStatus(${invoice.id})"
+                                                                class="px-3 py-1 rounded-full text-xs font-semibold transition-all duration-300 ${
+                                                                    invoice.status === 'paid'
+                                                                        ? 'bg-gradient-to-r from-teal-600 to-teal-700 text-white'
+                                                                        : 'bg-gradient-to-r from-amber-500 to-amber-600 text-white'
+                                                                }"
+                                                            >
                                                                 ${invoice.status === 'paid' ? '✓ Paid' : '○ Unpaid'}
                                                             </button>
-                                                        </div>
-                                                        <p class="${subTextClass} mb-1">${invoice.clientName}</p>
-                                                        <p class="text-sm ${subTextClass}">Due: ${invoice.dueDate}</p>
-                                                    </div>
-                                                    <div class="flex items-center gap-4">
-                                                        <div class="text-right">
-                                                            <p class="text-sm ${subTextClass} mb-1">Total Amount</p>
-                                                            <p class="text-2xl font-bold ${textClass} bg-gradient-to-r ${isDark ? 'from-slate-300 to-slate-400' : 'from-slate-700 to-slate-900'} bg-clip-text text-transparent">
-                                                                ${invoice.total.toFixed(2)}
-                                                            </p>
-                                                        </div>
-                                                        <div class="flex gap-2">
-                                                            <button onclick='generatePDF(${JSON.stringify(invoice).replace(/'/g, "&#39;")})' class="${isDark ? 'bg-white bg-opacity-10 hover:bg-opacity-20' : 'bg-gray-200 hover:bg-gray-300'} ${textClass} p-3 rounded-xl transition-all duration-300 hover:scale-110" title="Export PDF">
-                                                                ${icons.download}
-                                                            </button>
-                                                            <button onclick='state.viewInvoice = ${JSON.stringify(invoice).replace(/'/g, "&#39;")}; render();' class="${isDark ? 'bg-white bg-opacity-10 hover:bg-opacity-20' : 'bg-gray-200 hover:bg-gray-300'} ${textClass} p-3 rounded-xl transition-all duration-300 hover:scale-110" title="View Details">
-                                                                ${icons.eye}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        `).join('')}
+                                                        </td>
+                                                        <td class="px-4 py-4">
+                                                            <div class="flex gap-2">
+                                                                <button
+                                                                    onclick='editInvoice(${JSON.stringify(invoice).replace(/'/g, "&#39;")})'
+                                                                    class="${isDark ? 'bg-white bg-opacity-10 hover:bg-opacity-20' : 'bg-gray-200 hover:bg-gray-300'} ${textClass} p-2 rounded-lg transition-all duration-300 hover:scale-110"
+                                                                    title="Edit"
+                                                                >
+                                                                    ${icons.edit}
+                                                                </button>
+                                                                <button
+                                                                    onclick='copyInvoiceToClipboard(${JSON.stringify(invoice).replace(/'/g, "&#39;")})'
+                                                                    class="${isDark ? 'bg-white bg-opacity-10 hover:bg-opacity-20' : 'bg-gray-200 hover:bg-gray-300'} ${textClass} p-2 rounded-lg transition-all duration-300 hover:scale-110"
+                                                                    title="Copy"
+                                                                >
+                                                                    ${icons.copy}
+                                                                </button>
+                                                                <button
+                                                                    onclick='generatePDF(${JSON.stringify(invoice).replace(/'/g, "&#39;")})'
+                                                                    class="${isDark ? 'bg-white bg-opacity-10 hover:bg-opacity-20' : 'bg-gray-200 hover:bg-gray-300'} ${textClass} p-2 rounded-lg transition-all duration-300 hover:scale-110"
+                                                                    title="Export PDF"
+                                                                >
+                                                                    ${icons.download}
+                                                                </button>
+                                                                <button
+                                                                    onclick='state.viewInvoice = ${JSON.stringify(invoice).replace(/'/g, "&#39;")}; render();'
+                                                                    class="${isDark ? 'bg-white bg-opacity-10 hover:bg-opacity-20' : 'bg-gray-200 hover:bg-gray-300'} ${textClass} p-2 rounded-lg transition-all duration-300 hover:scale-110"
+                                                                    title="View"
+                                                                >
+                                                                    ${icons.eye}
+                                                                </button>
+                                                                <button
+                                                                    onclick='deleteInvoice(${invoice.id})'
+                                                                    class="bg-gradient-to-r from-red-500 to-pink-600 text-white p-2 rounded-lg transition-all duration-300 hover:scale-110 hover:shadow-lg"
+                                                                    title="Delete"
+                                                                >
+                                                                    ${icons.trash}
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                `).join('')}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 `}
                             </div>
@@ -411,32 +708,80 @@
                     </div>
                 </div>
 
-                ${state.viewInvoice ? `
+                ${state.showDeleteConfirm ? `
+                    <div class="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in" onclick="if(event.target === this) { state.showDeleteConfirm = null; render(); }">
+                        <div class="${cardClass} rounded-3xl p-8 max-w-md w-full shadow-2xl animate-fade-in" onclick="event.stopPropagation()">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="p-3 rounded-full bg-red-100">
+                                    ${icons.alertCircle}
+                                </div>
+                                <h2 class="text-2xl font-bold ${textClass}">Delete Invoice?</h2>
+                            </div>
+                            <p class="${subTextClass} mb-6">
+                                Are you sure you want to delete this invoice? This action cannot be undone.
+                            </p>
+                            <div class="flex gap-3 justify-end">
+                                <button 
+                                    onclick="state.showDeleteConfirm = null; render();" 
+                                    class="px-6 py-3 border ${isDark ? 'border-white border-opacity-20 hover:bg-white hover:bg-opacity-10' : 'border-gray-300 hover:bg-gray-100'} ${textClass} rounded-xl transition-all duration-300"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onclick="confirmDelete()" 
+                                    class="flex items-center gap-2 bg-gradient-to-r from-red-500 to-pink-600 text-white px-6 py-3 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300 font-semibold"
+                                >
+                                    ${state.loading ? icons.spinner : icons.trash}
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ` : ''}${state.viewInvoice ? `
                     <div class="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in" onclick="if(event.target === this) { state.viewInvoice = null; render(); }">
                         <div class="${cardClass} rounded-3xl p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl" onclick="event.stopPropagation()">
                             <div class="flex justify-between items-start mb-6">
                                 <h2 class="text-3xl font-bold ${textClass} bg-gradient-to-r ${isDark ? 'from-slate-300 to-slate-400' : 'from-slate-700 to-slate-900'} bg-clip-text text-transparent">
                                     Invoice Details
                                 </h2>
-                                <button onclick="state.viewInvoice = null; render();" class="${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'} text-2xl transition-colors duration-300">
-                                    ✕
+                                <button onclick="state.viewInvoice = null; render();" class="${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'} transition-colors duration-300 p-2 hover:bg-white hover:bg-opacity-10 rounded-lg">
+                                    ${icons.x}
                                 </button>
                             </div>
                             <div class="space-y-6">
                                 <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-gray-100 bg-opacity-50'} backdrop-blur-sm p-5 rounded-2xl">
-                                    <h3 class="font-semibold text-lg ${textClass} mb-3">Client Information</h3>
-                                    <p class="${subTextClass}"><span class="${textClass}">Name:</span> ${state.viewInvoice.clientName}</p>
-                                    <p class="${subTextClass}"><span class="${textClass}">Email:</span> ${state.viewInvoice.clientEmail}</p>
-                                    ${state.viewInvoice.clientAddress ? `<p class="${subTextClass}"><span class="${textClass}">Address:</span> ${state.viewInvoice.clientAddress}</p>` : ''}
+                                    <h3 class="font-semibold text-lg ${textClass} mb-3 flex items-center gap-2">
+                                        <i data-lucide="user" class="w-5 h-5"></i>
+                                        Client Information
+                                    </h3>
+                                    <p class="${subTextClass}"><span class="${textClass} font-medium">Name:</span> ${state.viewInvoice.clientName}</p>
+                                    <p class="${subTextClass}"><span class="${textClass} font-medium">Email:</span> ${state.viewInvoice.clientEmail}</p>
+                                    ${state.viewInvoice.clientAddress ? `<p class="${subTextClass}"><span class="${textClass} font-medium">Address:</span> ${state.viewInvoice.clientAddress}</p>` : ''}
                                 </div>
                                 <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-gray-100 bg-opacity-50'} backdrop-blur-sm p-5 rounded-2xl">
-                                    <h3 class="font-semibold text-lg ${textClass} mb-3">Invoice Information</h3>
-                                    <p class="${subTextClass}"><span class="${textClass}">Invoice #:</span> ${state.viewInvoice.invoiceNumber}</p>
-                                    <p class="${subTextClass}"><span class="${textClass}">Date:</span> ${state.viewInvoice.date}</p>
-                                    <p class="${subTextClass}"><span class="${textClass}">Due Date:</span> ${state.viewInvoice.dueDate}</p>
+                                    <h3 class="font-semibold text-lg ${textClass} mb-3 flex items-center gap-2">
+                                        <i data-lucide="file-text" class="w-5 h-5"></i>
+                                        Invoice Information
+                                    </h3>
+                                    <p class="${subTextClass}"><span class="${textClass} font-medium">Invoice #:</span> ${state.viewInvoice.invoiceNumber}</p>
+                                    <p class="${subTextClass}"><span class="${textClass} font-medium">Date:</span> ${state.viewInvoice.date}</p>
+                                    <p class="${subTextClass}"><span class="${textClass} font-medium">Due Date:</span> ${state.viewInvoice.dueDate}</p>
+                                    <p class="${subTextClass}">
+                                        <span class="${textClass} font-medium">Status:</span> 
+                                        <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold ml-2 ${
+                                            state.viewInvoice.status === 'paid'
+                                                ? 'bg-gradient-to-r from-teal-600 to-teal-700 text-white'
+                                                : 'bg-gradient-to-r from-amber-500 to-amber-600 text-white'
+                                        }">
+                                            ${state.viewInvoice.status === 'paid' ? '✓ Paid' : '○ Unpaid'}
+                                        </span>
+                                    </p>
                                 </div>
                                 <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-gray-100 bg-opacity-50'} backdrop-blur-sm p-5 rounded-2xl">
-                                    <h3 class="font-semibold text-lg ${textClass} mb-4">Line Items</h3>
+                                    <h3 class="font-semibold text-lg ${textClass} mb-4 flex items-center gap-2">
+                                        <i data-lucide="list" class="w-5 h-5"></i>
+                                        Line Items
+                                    </h3>
                                     <div class="overflow-x-auto">
                                         <table class="w-full">
                                             <thead>
@@ -459,7 +804,7 @@
                                                 <tr class="font-bold">
                                                     <td colspan="3" class="px-4 py-4 text-right ${textClass} text-lg">Total:</td>
                                                     <td class="px-4 py-4 text-xl ${textClass} bg-gradient-to-r ${isDark ? 'from-slate-300 to-slate-400' : 'from-slate-700 to-slate-900'} bg-clip-text text-transparent">
-                                                        ${state.viewInvoice.total.toFixed(2)}
+                                                        $${state.viewInvoice.total.toFixed(2)}
                                                     </td>
                                                 </tr>
                                             </tbody>
@@ -468,10 +813,27 @@
                                 </div>
                                 ${state.viewInvoice.notes ? `
                                     <div class="${isDark ? 'bg-white bg-opacity-5' : 'bg-gray-100 bg-opacity-50'} backdrop-blur-sm p-5 rounded-2xl">
-                                        <h3 class="font-semibold text-lg ${textClass} mb-3">Notes</h3>
+                                        <h3 class="font-semibold text-lg ${textClass} mb-3 flex items-center gap-2">
+                                            <i data-lucide="sticky-note" class="w-5 h-5"></i>
+                                            Notes
+                                        </h3>
                                         <p class="${subTextClass}">${state.viewInvoice.notes}</p>
                                     </div>
                                 ` : ''}
+                                <div class="flex gap-3 justify-end pt-4 border-t ${isDark ? 'border-white border-opacity-10' : 'border-gray-200'}">
+                                    <button onclick='editInvoice(${JSON.stringify(state.viewInvoice).replace(/'/g, "&#39;")}); state.viewInvoice = null;' class="flex items-center gap-2 ${isDark ? 'bg-white bg-opacity-10 hover:bg-opacity-20' : 'bg-gray-200 hover:bg-gray-300'} ${textClass} px-4 py-2 rounded-xl transition-all duration-300">
+                                        ${icons.edit}
+                                        Edit
+                                    </button>
+                                    <button onclick='copyInvoiceToClipboard(${JSON.stringify(state.viewInvoice).replace(/'/g, "&#39;")})' class="flex items-center gap-2 ${isDark ? 'bg-white bg-opacity-10 hover:bg-opacity-20' : 'bg-gray-200 hover:bg-gray-300'} ${textClass} px-4 py-2 rounded-xl transition-all duration-300">
+                                        ${icons.copy}
+                                        Copy
+                                    </button>
+                                    <button onclick='generatePDF(${JSON.stringify(state.viewInvoice).replace(/'/g, "&#39;")})' class="flex items-center gap-2 bg-gradient-to-r from-slate-700 to-slate-800 text-white px-4 py-2 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-300">
+                                        ${icons.download}
+                                        Download PDF
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -479,6 +841,9 @@
             `;
 
             document.getElementById('app').innerHTML = html;
+            
+            // Initialize Lucide icons
+            initIcons();
         }
 
         // Initial render
